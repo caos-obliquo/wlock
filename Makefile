@@ -11,7 +11,7 @@ INCS != $(PKG_CONFIG) --cflags $(PKGS)
 LIBS != $(PKG_CONFIG) --libs $(PKGS)
 
 WLCPPFLAGS = -DVERSION=\"$(VERSION)\"
-WLCFLAGS   = -pedantic -Wall $(INCS) $(WLCPPFLAGS) $(CPPFLAGS) $(CFLAGS)
+WLCFLAGS   = -std=c99 -pedantic -Wall $(INCS) $(WLCPPFLAGS) $(CPPFLAGS) $(CFLAGS)
 LDLIBS     = $(LIBS) -lcrypt
 
 PROTO = single-pixel-buffer-v1-protocol.h ext-session-lock-v1-protocol.h viewporter-protocol.h
