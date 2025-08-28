@@ -1,6 +1,6 @@
 .POSIX:
 
-VERSION = 0
+VERSION = 1.0
 
 PREFIX = /usr/local
 
