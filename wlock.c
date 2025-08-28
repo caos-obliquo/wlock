@@ -420,7 +420,7 @@ setup(void)
 	wl_registry_add_listener(registry, &registry_listener, NULL);
 	wl_display_roundtrip(display);
 
-	if (!compositor || !lock_manager)
+	if (!compositor || !lock_manager || !buf_manager)
 		errx(EXIT_FAILURE, "unsupported compositor");
 
 	lock = ext_session_lock_manager_v1_lock(lock_manager);
