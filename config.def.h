@@ -1,4 +1,3 @@
-/* color format is 0xRRGGBBAA */
 static Clr colorname[4] = {
 	[INIT]      = { 0x00000000, 0x00000000, 0x00000000 }, /* after initialization */
 	[INPUT]     = { 0x00000000, 0x55555555, 0x77777777 }, /* during input */
