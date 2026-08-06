@@ -1,3 +1,4 @@
+#define _GNU_SOURCE /* memfd_create */
 #define _DEFAULT_SOURCE
 #include <err.h>
 #include <errno.h>
@@ -31,6 +32,12 @@ typedef struct {
 
 	int32_t width, height;
 
+	/* solid-color shm buffer (single-pixel buffers render nothing on
+	 * wlroots 0.19, wlock issue #36); kept until the next frame so the
+	 * compositor never sees a freed buffer */
+	struct wl_shm_pool *pool;
+	struct wl_buffer *buffer;
+
 	struct wl_list link;
 } Output;
 
@@ -44,6 +51,7 @@ static struct xkb_context *xkb_ctx;
 static struct wl_registry *registry;
 static struct wl_compositor *compositor;
 static struct wp_viewporter *viewporter;
+static struct wl_shm *shm;
 static struct wp_single_pixel_buffer_manager_v1 *buf_manager;
 static struct ext_session_lock_manager_v1 *lock_manager;
 static struct wl_seat *seat;
@@ -93,22 +101,48 @@ static void
 output_frame(Output *output)
 {
 	Clr c = colorname[input_state];
-	struct wl_buffer *buffer;
 	struct wl_region *opaque = wl_compositor_create_region(compositor);
+	int fd;
+	void *map;
+	uint32_t px;
+	/* 8-bit channels: parse_clr stores each channel replicated across
+	 * every byte of the 32-bit value, so the low byte is the real one */
+	uint8_t r = c.r & 0xff, g = c.g & 0xff, b = c.b & 0xff;
 
-	/* alpha has no effect on this surface */
-	buffer = wp_single_pixel_buffer_manager_v1_create_u32_rgba_buffer(
-		buf_manager, c.r, c.g, c.b, 0xffffffff);
+	if (output->buffer) {
+		wl_buffer_destroy(output->buffer);
+		wl_shm_pool_destroy(output->pool);
+		output->buffer = NULL;
+		output->pool = NULL;
+	}
 
-	wl_surface_attach(output->surface, buffer, 0, 0);
+	/* wl_shm solid-color 1x1 buffer scaled by the viewport — immune to
+	 * the wlroots 0.19 single-pixel-buffer rendering bug (issue #36) */
+	fd = memfd_create("wlock-color", MFD_CLOEXEC);
+	if (fd < 0)
+		err(EXIT_FAILURE, "memfd_create:");
+	if (ftruncate(fd, sizeof(px)) != 0)
+		err(EXIT_FAILURE, "ftruncate:");
+	map = mmap(NULL, sizeof(px), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+	if (map == MAP_FAILED)
+		err(EXIT_FAILURE, "mmap:");
+
+	px = 0xff000000 | (r << 16) | (g << 8) | b;
+	memcpy(map, &px, sizeof(px));
+	munmap(map, sizeof(px));
+
+	output->pool = wl_shm_create_pool(shm, fd, sizeof(px));
+	close(fd);
+	output->buffer = wl_shm_pool_create_buffer(output->pool, 0, 1, 1,
+		sizeof(px), WL_SHM_FORMAT_ARGB8888);
+
+	wl_surface_attach(output->surface, output->buffer, 0, 0);
 	wl_surface_damage_buffer(output->surface, 0, 0, INT32_MAX, INT32_MAX);
 	wl_region_add(opaque, 0, 0, INT32_MAX, INT32_MAX);
 	wl_surface_set_opaque_region(output->surface, opaque);
 	wl_region_destroy(opaque);
 	wp_viewport_set_destination(output->viewport, output->width, output->height);
 	wl_surface_commit(output->surface);
-
-	wl_buffer_destroy(buffer);
 }
 
 static void
@@ -152,6 +186,10 @@ static void
 output_destroy(Output *output)
 {
 	wl_list_remove(&output->link);
+	if (output->buffer)
+		wl_buffer_destroy(output->buffer);
+	if (output->pool)
+		wl_shm_pool_destroy(output->pool);
 	wp_viewport_destroy(output->viewport);
 	ext_session_lock_surface_v1_destroy(output->lock_surface);
 	wl_surface_destroy(output->surface);
@@ -325,6 +363,8 @@ registry_global(void *data, struct wl_registry *registry,
 		compositor = wl_registry_bind(registry, name, &wl_compositor_interface, 4);
 	else if (!strcmp(interface, wp_viewporter_interface.name))
 		viewporter = wl_registry_bind(registry, name, &wp_viewporter_interface, 1);
+	else if (!strcmp(interface, wl_shm_interface.name))
+		shm = wl_registry_bind(registry, name, &wl_shm_interface, 1);
 	else if (!strcmp(interface, wp_single_pixel_buffer_manager_v1_interface.name))
 		buf_manager = wl_registry_bind(
 			registry, name, &wp_single_pixel_buffer_manager_v1_interface, 1);
@@ -425,7 +465,7 @@ setup(void)
 	wl_registry_add_listener(registry, &registry_listener, NULL);
 	wl_display_roundtrip(display);
 
-	if (!compositor || !lock_manager || !buf_manager)
+	if (!compositor || !lock_manager || !shm)
 		errx(EXIT_FAILURE, "unsupported compositor");
 
 	lock = ext_session_lock_manager_v1_lock(lock_manager);
@@ -449,7 +489,10 @@ cleanup(void)
 	wl_pointer_destroy(pointer);
 	wl_seat_destroy(seat);
 	ext_session_lock_manager_v1_destroy(lock_manager);
-	wp_single_pixel_buffer_manager_v1_destroy(buf_manager);
+	if (shm)
+		wl_shm_destroy(shm);
+	if (buf_manager)
+		wp_single_pixel_buffer_manager_v1_destroy(buf_manager);
 	wp_viewporter_destroy(viewporter);
 	wl_compositor_destroy(compositor);
 	wl_registry_destroy(registry);
