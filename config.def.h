@@ -1,8 +1,8 @@
 static Clr colorname[4] = {
-	[INIT]      = { 0x00000000, 0x00000000, 0x00000000 }, /* after initialization */
-	[INPUT]     = { 0x00000000, 0x55555555, 0x77777777 }, /* during input */
-	[INPUT_ALT] = { 0x00000000, 0x50505050, 0x70707070 }, /* during input, second color */
-	[FAILED]    = { 0xcccccccc, 0x33333333, 0x33333333 }, /* wrong password */
+	[INIT]      = { 0x19192bff, 0x19192bff, 0x19192bff }, /* Dark purple background */
+	[INPUT]     = { 0x24243bff, 0x24243bff, 0x24243bff }, /* Subtle purple input */
+	[INPUT_ALT] = { 0x2f2f4bff, 0x2f2f4bff, 0x2f2f4bff }, /* Slightly lighter */
+	[FAILED]    = { 0x5c1c1cff, 0x5c1c1cff, 0x5c1c1cff }, /* Dark red */
 };
 
 /* treat a cleared input like a wrong password (color) */
