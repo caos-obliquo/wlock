@@ -10,6 +10,21 @@ Excerpt from the protocol specifying the behavior:
 > the session is locked the session remains locked, possibly permanently
 > depending on compositor policy.
 
+## Recovery
+
+If wlock ever crashes or hangs while the session is locked, recover without
+rebooting by switching to a TTY and restarting the compositor:
+
+```
+Ctrl+Alt+F2          # switch to a TTY
+login
+pkill -f dwl         # or pkill -f <your compositor>
+```
+
+The compositor restart resets the session-lock state. Note that killing the
+lock client alone does **not** unlock the session (per the protocol excerpt
+above); the compositor must be restarted.
+
 ## Building
 
 To build wlock first ensure that you have the following dependencies:
