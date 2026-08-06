@@ -200,6 +200,11 @@ keyboard_keypress(enum wl_keyboard_key_state key_state,
 		explicit_bzero(&pw.input, sizeof(pw.input));
 		pw.len = 0;
 		break;
+	case XKB_KEY_Delete:
+	case XKB_KEY_Insert:
+		/* skip: xkb_keysym_to_utf8 maps these to DEL/control bytes,
+		 * corrupting the password buffer (wlock issue #11) */
+		break;
 	default:
 		if (!xkb_keysym_to_utf8(sym, buf, 8))
 			break;
