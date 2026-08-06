@@ -105,9 +105,12 @@ output_frame(Output *output)
 	int fd;
 	void *map;
 	uint32_t px;
-	/* 8-bit channels: parse_clr stores each channel replicated across
-	 * every byte of the 32-bit value, so the low byte is the real one */
-	uint8_t r = c.r & 0xff, g = c.g & 0xff, b = c.b & 0xff;
+	/* Extract the color bytes. Two encodings coexist: the static
+	 * colorname table holds packed ARGB literals (0x19192bff), while
+	 * parse_clr CLI overrides replicate each channel across the 32-bit
+	 * value (0x19191919). Shifting down 24/16/8 yields the right byte
+	 * in BOTH cases (for replicated values >>24 == &0xff). */
+	uint8_t r = (c.r >> 24) & 0xff, g = (c.g >> 16) & 0xff, b = (c.b >> 8) & 0xff;
 
 	if (output->buffer) {
 		wl_buffer_destroy(output->buffer);
@@ -116,25 +119,34 @@ output_frame(Output *output)
 		output->pool = NULL;
 	}
 
-	/* wl_shm solid-color 1x1 buffer scaled by the viewport — immune to
-	 * the wlroots 0.19 single-pixel-buffer rendering bug (issue #36) */
+	/* wl_shm solid-color buffer — immune to the wlroots 0.19
+	 * single-pixel-buffer rendering bug (issue #36). Full-size buffer,
+	 * swaylock-style: a 1x1 buffer + viewport scale triggers direct
+	 * scanout in some compositors (e.g. labwc) and renders white */
+	if (output->width == 0 || output->height == 0)
+		return;
+	size_t w = output->width, h = output->height;
+	size_t stride = w * 4, size = stride * h;
+	uint32_t *pixels;
 	fd = memfd_create("wlock-color", MFD_CLOEXEC);
 	if (fd < 0)
 		err(EXIT_FAILURE, "memfd_create:");
-	if (ftruncate(fd, sizeof(px)) != 0)
+	if (ftruncate(fd, size) != 0)
 		err(EXIT_FAILURE, "ftruncate:");
-	map = mmap(NULL, sizeof(px), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+	map = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 	if (map == MAP_FAILED)
 		err(EXIT_FAILURE, "mmap:");
 
 	px = 0xff000000 | (r << 16) | (g << 8) | b;
-	memcpy(map, &px, sizeof(px));
-	munmap(map, sizeof(px));
+	pixels = map;
+	for (size_t i = 0; i < w * h; i++)
+		pixels[i] = px;
+	munmap(map, size);
 
-	output->pool = wl_shm_create_pool(shm, fd, sizeof(px));
+	output->pool = wl_shm_create_pool(shm, fd, size);
 	close(fd);
-	output->buffer = wl_shm_pool_create_buffer(output->pool, 0, 1, 1,
-		sizeof(px), WL_SHM_FORMAT_ARGB8888);
+	output->buffer = wl_shm_pool_create_buffer(output->pool, 0, w, h,
+		stride, WL_SHM_FORMAT_ARGB8888);
 
 	wl_surface_attach(output->surface, output->buffer, 0, 0);
 	wl_surface_damage_buffer(output->surface, 0, 0, INT32_MAX, INT32_MAX);
