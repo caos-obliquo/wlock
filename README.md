@@ -46,6 +46,18 @@ Run `wlock`, to get out of it, enter your password.
 
 See the wlock usage (`wlock -h`) for more details.
 
+### Input
+
+| Key | Action |
+|---|---|
+| printable | type password character (masked) |
+| `Return` / KP_Enter | submit password |
+| `Backspace` | delete last character |
+| `Escape` | clear the input |
+
+Wrong password turns the overlay red (`failonclear = 1` in `config.def.h`)
+and keeps the session locked.
+
 See [swayidle](https://github.com/swaywm/swayidle) or 
 [widle](https://codeberg.org/sewn/widle) to use wlock
 as a screen locker for a Wayland desktop.
